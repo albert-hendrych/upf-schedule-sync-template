@@ -1,0 +1,55 @@
+name: University Schedule Sync and Check
+
+on:
+  schedule:
+    # Programat per executar-se 1 cop al dia a les 15:00h a Catalunya (13:00 UTC en horari d'estiu CEST / 14:00 UTC a l'hivern CET).
+    - cron: '0 13 * * *'
+  workflow_dispatch:
+    inputs:
+      target_date:
+        description: 'Data o dia de la setmana a auditar (format YYYY-MM-DD, buit per a la setmana actual o vinent)'
+        required: false
+        default: ''
+      dry_run:
+        description: 'Executar en mode dry-run (sense modificar calendari ni alertar)'
+        type: boolean
+        required: false
+        default: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout del repositori
+        uses: actions/checkout@v4
+
+      - name: Configuració de Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Instal·lació de dependències
+        run: |
+          pip install -r requirements.txt
+          playwright install chromium
+
+      - name: Execució del sincronitzador i verificador
+        env:
+          UNI_USERNAME: ${{ secrets.UNI_USERNAME }}
+          UNI_PASSWORD: ${{ secrets.UNI_PASSWORD }}
+          GOOGLE_SERVICE_ACCOUNT_KEY: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_KEY }}
+          GOOGLE_CALENDAR_ID: ${{ secrets.GOOGLE_CALENDAR_ID }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          SUBJECT_GROUP_FILTERS: ${{ vars.SUBJECT_GROUP_FILTERS || secrets.SUBJECT_GROUP_FILTERS }}
+        run: |
+          ARGS=""
+          if [ -n "${{ github.event.inputs.target_date }}" ]; then
+            ARGS="$ARGS --date ${{ github.event.inputs.target_date }}"
+          fi
+          if [ "${{ github.event.inputs.dry_run }}" = "true" ]; then
+            ARGS="$ARGS --dry-run"
+          fi
+          python -m src.main $ARGS
